@@ -1,0 +1,1505 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Image,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
+import * as Print from 'expo-print';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  HandCoins,
+  Building2,
+  FileText,
+  ShieldCheck,
+  Calendar,
+  Clock,
+  Percent,
+  Users,
+  Check,
+  X,
+  ArrowLeft,
+  Download,
+  CreditCard,
+  Upload,
+} from 'lucide-react-native';
+import CalendarPicker from '../../components/CalendarPicker';
+import { useRouter } from 'expo-router';
+
+const UploadTile = ({ label, imageUri, onPress, error, testID }) => (
+  <TouchableOpacity
+    style={[styles.uploadTile, error && styles.inputBoxError]}
+    onPress={onPress}
+    activeOpacity={0.8}
+    testID={testID}
+    accessibilityRole="button"
+  >
+    {imageUri ? (
+      <>
+        <Image source={{ uri: imageUri }} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} resizeMode="cover" />
+        <View style={styles.uploadOverlay}><Text style={styles.uploadOverlayText}>Replace</Text></View>
+      </>
+    ) : (
+      <View style={styles.uploadPlaceholder}>
+        <Upload color="#999" size={24} />
+        <Text style={styles.uploadLabel}>{label}</Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+export default function LoansScreen() {
+  const router = useRouter();
+  const [view, setView] = useState('home');
+  const [loading, setLoading] = useState(false);
+  const [requestErrors, setRequestErrors] = useState({ amount: false, purpose: false, guarantorNin: false, guarantorFront: false, guarantorBack: false, agree: false });
+  const [accountErrors, setAccountErrors] = useState({});
+
+  const [userData, setUserData] = useState({ name: '', phone: '' });
+  const [loans, setLoans] = useState([]);
+  const [loanAccounts, setLoanAccounts] = useState([]);
+  const [accountType, setAccountType] = useState('individual');
+  const [accountForm, setAccountForm] = useState({
+    fullName: '', nin: '', idFrontUrl: '', idBackUrl: '', passportUrl: '', address: '', phone: '', email: '',
+    institutionName: '', headOfficeAddress: '', ceoName: '', ceoNin: '', ceoIdFrontUrl: '', ceoIdBackUrl: '', ceoPassportUrl: '',
+    branchAddress: '', branchManagerName: '', branchManagerNin: '', branchManagerIdFrontUrl: '', branchManagerIdBackUrl: '', branchManagerPassportUrl: '',
+    certificate1Url: '', certificate2Url: '',
+    orgName: '', officeAddress: '', orgRegistrationCertUrl: '', leaderName: '', leaderNin: '', leaderIdFrontUrl: '', leaderIdBackUrl: '', leaderPassportUrl: '',
+    creatorRole: '', creatorName: '', creatorNin: '', creatorIdFrontUrl: '', creatorIdBackUrl: '', creatorPassportUrl: '',
+    orgKind: 'NGO',
+  });
+  const [orgs, setOrgs] = useState([]);
+  const [ledger, setLedger] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [groupTab, setGroupTab] = useState('all');
+  const [linkedBanks, setLinkedBanks] = useState([]);
+  const [mobileMoney, setMobileMoney] = useState(null);
+
+  const [selectedLoan, setSelectedLoan] = useState(null);
+  const [selectedOrg, setSelectedOrg] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+
+  const [amount, setAmount] = useState('');
+  const [interest, setInterest] = useState('');
+  const [term, setTerm] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [guarantorNin, setGuarantorNin] = useState('');
+  const [guarantorIdFrontB64, setGuarantorIdFrontB64] = useState('');
+  const [guarantorIdBackB64, setGuarantorIdBackB64] = useState('');
+
+  const [showRepayModal, setShowRepayModal] = useState(false);
+  const [repayAmount, setRepayAmount] = useState('');
+  const [repayMethod, setRepayMethod] = useState('mm');
+  const [selectedBankId, setSelectedBankId] = useState('');
+  const [agreedTerms, setAgreedTerms] = useState(false);
+
+  const [orgName, setOrgName] = useState('');
+  const [orgGroupId, setOrgGroupId] = useState('');
+  const [orgBankId, setOrgBankId] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const [ud, ls, os, lg, gr, lb, mm, accs] = await Promise.all([
+          AsyncStorage.getItem('userData'),
+          AsyncStorage.getItem('loansData'),
+          AsyncStorage.getItem('loanOrgs'),
+          AsyncStorage.getItem('loanLedger'),
+          AsyncStorage.getItem('availableGroups'),
+          AsyncStorage.getItem('linkedBanks'),
+          AsyncStorage.getItem('mobileMoney'),
+          AsyncStorage.getItem('loanAccounts'),
+        ]);
+        const seedIfEmpty = async () => {
+          try {
+            const current = gr ? JSON.parse(gr) : [];
+            if (!current || current.length === 0) {
+              const samples = [
+                { id: 'lg-1001', name: 'Monthly Savers Circle', frequency: 'Monthly', membersList: [ { id:'m1', name:'Aminata', phone:'070000001' }, { id:'m2', name:'Joseph', phone:'070000002' }, { id:'m3', name:'Mariama', phone:'070000003' } ], nextEvent: 'Contribution due 28th' },
+                { id: 'lg-1002', name: 'Weekly Investment Group', frequency: 'Weekly', membersList: [ { id:'m4', name:'Isha', phone:'070000004' }, { id:'m5', name:'Kabba', phone:'070000005' } ], nextEvent: 'Payout rotation on Friday' },
+                { id: 'lg-1003', name: 'Community Osusu', frequency: 'Bi-weekly', membersList: [ { id:'m6', name:'Samuel', phone:'070000006' }, { id:'m7', name:'Hassan', phone:'070000007' }, { id:'m8', name:'Fatmata', phone:'070000008' }, { id:'m9', name:'Kadi', phone:'070000009' } ], nextEvent: 'Meeting: Sat 4pm' },
+              ];
+              await AsyncStorage.setItem('availableGroups', JSON.stringify(samples));
+              setGroups(samples);
+            }
+          } catch (se) { console.log('[Loans] seed groups error', se); }
+        };
+        await seedIfEmpty();
+        if (ud) setUserData(JSON.parse(ud));
+        if (ls) setLoans(JSON.parse(ls));
+        if (os) setOrgs(JSON.parse(os));
+        if (lg) setLedger(JSON.parse(lg));
+        if (gr) setGroups(JSON.parse(gr));
+        if (lb) setLinkedBanks(JSON.parse(lb));
+        if (mm) setMobileMoney(JSON.parse(mm));
+        if (accs) setLoanAccounts(JSON.parse(accs));
+      } catch (e) {
+        console.log('[Loans] load error', e);
+        Alert.alert('Error', 'Failed to load loans data');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const userId = useMemo(() => (userData.phone || 'guest'), [userData]);
+
+  const trustScore = useMemo(() => {
+    let score = 0;
+    try {
+      if (userData.name && userData.phone) score += 20;
+    } catch {}
+    try {
+      const st = groups && Array.isArray(groups) ? groups : [];
+      const inAnyGroup = st.some((g) => (g.membersList || []).some((m) => m.phone === userData.phone));
+      if (inAnyGroup) score += 10;
+    } catch {}
+    try {
+      if (mobileMoney?.number) score += 10;
+    } catch {}
+    try {
+      if (linkedBanks && linkedBanks.length > 0) score += 10;
+    } catch {}
+    try {
+      const _ = AsyncStorage.getItem('identityDocs');
+    } catch {}
+    score = Math.min(100, Math.max(20, score + 30));
+    return score;
+  }, [userData, groups, mobileMoney, linkedBanks]);
+
+  const maxLoan = useMemo(() => {
+    const base = 2000;
+    return Math.round((base + trustScore * 150) * 100) / 100;
+  }, [trustScore]);
+
+  const formatCurrency = useCallback((n) => {
+    try {
+      return `NLe ${new Intl.NumberFormat('en-SL', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n || 0))}`;
+    } catch {
+      return `NLe ${n}`;
+    }
+  }, []);
+
+  const saveLoans = useCallback(async (arr) => {
+    setLoans(arr);
+    await AsyncStorage.setItem('loansData', JSON.stringify(arr));
+  }, []);
+
+  const saveOrgs = useCallback(async (arr) => {
+    setOrgs(arr);
+    await AsyncStorage.setItem('loanOrgs', JSON.stringify(arr));
+  }, []);
+
+  const saveLedger = useCallback(async (arr) => {
+    setLedger(arr);
+    await AsyncStorage.setItem('loanLedger', JSON.stringify(arr));
+  }, []);
+
+  const saveAccounts = useCallback(async (arr) => {
+    setLoanAccounts(arr);
+    await AsyncStorage.setItem('loanAccounts', JSON.stringify(arr));
+  }, []);
+
+  const calcTotals = useCallback((loan) => {
+    const principal = Number(loan.amount || 0);
+    const rate = Number(loan.interest || 0) / 100;
+    const months = Number(loan.term || 1);
+    const total = principal * (1 + rate * (months / 12));
+    const paid = (loan.repayments || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+    const outstanding = Math.max(0, total - paid);
+    const monthlyDue = total / months;
+    return { total, paid, outstanding, monthlyDue };
+  }, []);
+
+  const lastHash = useMemo(() => (ledger.length > 0 ? ledger[ledger.length - 1].hash : '0x0'), [ledger]);
+
+  const addLedger = useCallback(async (type, data) => {
+    try {
+      const prev = lastHash || '0x0';
+      const payload = { type, data, prev, ts: Date.now() };
+      const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, JSON.stringify(payload));
+      const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, hash: `0x${hash.slice(0, 32)}`, prev, ...payload };
+      const next = [...ledger, entry];
+      await saveLedger(next);
+      return entry;
+    } catch (e) {
+      console.log('[Loans] addLedger error', e);
+      return null;
+    }
+  }, [ledger, lastHash, saveLedger]);
+
+  const pickGuarantorImage = useCallback(async (side) => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please allow photo library access to attach ID');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        base64: true,
+        quality: 0.6,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        aspect: [3, 2],
+      });
+      if (result.canceled) return;
+      const asset = result.assets && result.assets[0];
+      const b64 = asset?.base64 ? `data:${asset.type || 'image/jpeg'};base64,${asset.base64}` : '';
+      if (!b64) {
+        Alert.alert('Error', 'Failed to read image');
+        return;
+      }
+      if (side === 'front') { setGuarantorIdFrontB64(b64); setRequestErrors((e)=>({ ...e, guarantorFront: false })); }
+      else { setGuarantorIdBackB64(b64); setRequestErrors((e)=>({ ...e, guarantorBack: false })); }
+    } catch (e) {
+      console.log('[Loans] pickGuarantorImage error', e);
+      Alert.alert('Error', 'Could not pick image');
+    }
+  }, []);
+
+  const pickAccountImage = useCallback(async (fieldKey) => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please allow photo library access to attach ID');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        base64: true,
+        quality: 0.7,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        aspect: [3, 2],
+      });
+      if (result.canceled) return;
+      const asset = result.assets && result.assets[0];
+      const b64 = asset?.base64 ? `data:${asset.type || 'image/jpeg'};base64,${asset.base64}` : '';
+      if (!b64) { Alert.alert('Error', 'Failed to read image'); return; }
+      setAccountForm((f)=>({ ...f, [fieldKey]: b64 }));
+    } catch (e) {
+      console.log('[Loans] pickAccountImage error', e);
+      Alert.alert('Error', 'Could not pick image');
+    }
+  }, []);
+
+  const requestLoan = useCallback(async () => {
+    const a = parseFloat(amount);
+    const errs = {
+      amount: isNaN(a) || a <= 0,
+      purpose: !purpose.trim(),
+      guarantorNin: !guarantorNin.trim(),
+      guarantorFront: !guarantorIdFrontB64,
+      guarantorBack: !guarantorIdBackB64,
+      agree: !agreedTerms,
+    };
+    setRequestErrors(errs);
+    if (Object.values(errs).some(Boolean)) { Alert.alert('Missing information', 'Please fill all required fields'); return; }
+    console.log('[Loans] requestLoan pressed', { agreedTerms, trustScore, amount, purpose });
+    if (a > maxLoan) { Alert.alert('Limit', `Amount exceeds your limit of ${formatCurrency(maxLoan)}`); return; }
+    const myAccount = loanAccounts.find((acc)=>acc.ownerId===userId && acc.type==='individual');
+    if (!myAccount && trustScore < 100) { Alert.alert('Create Loan Account', 'Create an Individual Loan Account first (Loans → Create Loan Account)'); setView('accounts'); return; }
+    if (!mobileMoney && (!linkedBanks || linkedBanks.length === 0)) { Alert.alert('Payment Method Needed', 'Add Mobile Money or Bank details in Profile before requesting.'); return; }
+    try {
+      setLoading(true);
+      const loan = {
+        id: Date.now().toString(),
+        borrowerId: userId,
+        borrowerName: userData.name || 'You',
+        amount: a,
+        interest: null,
+        term: null,
+        purpose: purpose.trim(),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        orgId: '',
+        repayments: [],
+        guarantor: { nin: guarantorNin.trim(), idFrontB64: guarantorIdFrontB64, idBackB64: guarantorIdBackB64 },
+        payerDestinations: { mobileMoney: mobileMoney || null, bank: linkedBanks[0] || null },
+        borrowerAccountSnapshot: myAccount,
+      };
+      const next = [...loans, loan];
+      await saveLoans(next);
+      await addLedger('loan-requested', { loanId: loan.id, borrowerId: loan.borrowerId, amount: a });
+      setAmount(''); setInterest(''); setTerm(''); setPurpose(''); setGuarantorNin(''); setGuarantorIdFrontB64(''); setGuarantorIdBackB64(''); setAgreedTerms(false);
+      setRequestErrors({ amount: false, purpose: false, guarantorNin: false, guarantorFront: false, guarantorBack: false, agree: false });
+      setView('home');
+      setTimeout(() => { try { Alert.alert('Requested', 'Loan request submitted. View it under My Loans.'); } catch {} }, 50);
+    } catch (e) {
+      console.log('[Loans] request error', e);
+      Alert.alert('Error', 'Failed to submit request');
+    } finally {
+      setLoading(false);
+    }
+  }, [agreedTerms, amount, purpose, userId, userData, loans, saveLoans, addLedger, maxLoan, formatCurrency, trustScore, guarantorNin, guarantorIdFrontB64, guarantorIdBackB64, loanAccounts, mobileMoney, linkedBanks]);
+
+  const approveLoan = useCallback(async (org, loan, params) => {
+    try {
+      setLoading(true);
+      const rate = parseFloat(params?.interest ?? '');
+      const months = parseInt(params?.term ?? '');
+      if (isNaN(rate) || rate < 0) { Alert.alert('Invalid', 'Enter a valid interest %'); return; }
+      if (isNaN(months) || months <= 0) { Alert.alert('Invalid', 'Enter a valid term in months'); return; }
+      const next = loans.map((l) => l.id === loan.id ? { ...l, status: 'approved', orgId: org.id, interest: rate, term: months, approvedAt: new Date().toISOString() } : l);
+      await saveLoans(next);
+      await addLedger('loan-approved', { loanId: loan.id, orgId: org.id, interest: rate, term: months });
+      Alert.alert('Approved', 'Loan approved. Proceed to disburse.');
+    } catch (e) {
+      console.log('[Loans] approve error', e);
+      Alert.alert('Error', 'Failed to approve');
+    } finally {
+      setLoading(false);
+    }
+  }, [loans, saveLoans, addLedger]);
+
+  const disburseLoan = useCallback(async (org, loan) => {
+    try {
+      setLoading(true);
+      const destination = loan.payerDestinations?.mobileMoney?.number ? { method: 'mm', number: loan.payerDestinations.mobileMoney.number } : loan.payerDestinations?.bank ? { method: 'bank', bankId: loan.payerDestinations.bank.id, number: loan.payerDestinations.bank.number } : { method: 'unknown' };
+      const next = loans.map((l) => l.id === loan.id ? { ...l, status: 'active', disbursedAt: new Date().toISOString(), disbursement: { amount: loan.amount, ...destination, timestamp: new Date().toISOString() } } : l);
+      await saveLoans(next);
+      await addLedger('loan-disbursed', { loanId: loan.id, orgId: org.id, amount: loan.amount, destination, ts: Date.now() });
+      Alert.alert('Disbursed', 'Funds disbursed to borrower destination.');
+    } catch (e) {
+      console.log('[Loans] disburse error', e);
+      Alert.alert('Error', 'Failed to disburse');
+    } finally {
+      setLoading(false);
+    }
+  }, [loans, saveLoans, addLedger]);
+
+  const rejectLoan = useCallback(async (org, loan) => {
+    try {
+      setLoading(true);
+      const next = loans.map((l) => l.id === loan.id ? { ...l, status: 'rejected', rejectedAt: new Date().toISOString() } : l);
+      await saveLoans(next);
+      await addLedger('loan-rejected', { loanId: loan.id, orgId: org.id });
+      Alert.alert('Rejected', 'Loan request rejected.');
+    } catch (e) {
+      console.log('[Loans] reject error', e);
+      Alert.alert('Error', 'Failed to reject');
+    } finally {
+      setLoading(false);
+    }
+  }, [loans, saveLoans, addLedger]);
+
+  const repayLoan = useCallback(async () => {
+    if (!selectedLoan) return;
+    const amt = parseFloat(repayAmount);
+    if (isNaN(amt) || amt <= 0) { Alert.alert('Invalid', 'Enter a valid amount'); return; }
+    if (repayMethod === 'mm' && !mobileMoney?.number) { Alert.alert('Setup Needed', 'Add Mobile Money in Profile > Payment Method'); return; }
+    if (repayMethod === 'bank' && !selectedBankId) { Alert.alert('Select Bank', 'Choose a bank'); return; }
+    try {
+      setLoading(true);
+      const totals = calcTotals(selectedLoan);
+      const pay = Math.min(amt, totals.outstanding);
+      const entry = { id: Date.now().toString(), amount: pay, date: new Date().toISOString(), method: repayMethod, number: repayMethod === 'mm' ? mobileMoney?.number : (linkedBanks.find((b) => b.id === selectedBankId)?.number || '') };
+      const next = loans.map((l) => l.id === selectedLoan.id ? { ...l, repayments: [ ...(l.repayments || []), entry ] } : l);
+      await saveLoans(next);
+      await addLedger('loan-repayment', { loanId: selectedLoan.id, payerId: userId, amount: pay, method: repayMethod });
+      const updatedLoan = next.find((l) => l.id === selectedLoan.id);
+      setSelectedLoan(updatedLoan || null);
+      setShowRepayModal(false);
+      setRepayAmount(''); setSelectedBankId('');
+      const postTotals = calcTotals(updatedLoan);
+      if (postTotals.outstanding <= 0.01) {
+        const closed = next.map((l) => l.id === selectedLoan.id ? { ...l, status: 'completed', completedAt: new Date().toISOString() } : l);
+        await saveLoans(closed);
+        await addLedger('loan-closed', { loanId: selectedLoan.id });
+        setSelectedLoan(closed.find((l) => l.id === selectedLoan.id) || null);
+        Alert.alert('Completed', 'Loan fully repaid.');
+      } else {
+        Alert.alert('Payment Recorded', 'Repayment saved and recorded on-chain.');
+      }
+    } catch (e) {
+      console.log('[Loans] repay error', e);
+      Alert.alert('Error', 'Failed to record repayment');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedLoan, repayAmount, repayMethod, selectedBankId, mobileMoney, linkedBanks, loans, saveLoans, addLedger, calcTotals, userId]);
+
+  const exportPaymentsPdf = useCallback(async (loan) => {
+    try {
+      const totals = calcTotals(loan);
+      const rows = (loan.repayments || []).map((r) => `<tr><td>${new Date(r.date).toLocaleString()}</td><td>${r.method === 'mm' ? 'Mobile Money' : 'Bank'}</td><td style="text-align:right">${Number(r.amount).toFixed(2)}</td></tr>`).join('');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Loan Payments</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial;padding:24px}h1{margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #eee;padding:8px;font-size:12px}th{text-align:left;background:#fafafa}footer{margin-top:16px;font-size:12px;color:#666}</style></head><body><h1>Loan Payments Receipt</h1><div>Borrower: ${loan.borrowerName || loan.borrowerId}</div><div>Loan ID: ${loan.id}</div><div>Amount: ${formatCurrency(loan.amount)} • Interest: ${loan.interest}% • Term: ${loan.term} mo</div><table><thead><tr><th>Date</th><th>Method</th><th style="text-align:right">Amount (NLe)</th></tr></thead><tbody>${rows || '<tr><td colspan="3">No payments</td></tr>'}</tbody></table><footer>Total Repaid: ${Number(totals.paid).toFixed(2)} • Outstanding: ${Number(totals.outstanding).toFixed(2)}</footer></body></html>`;
+      if (Platform.OS === 'web') {
+        const win = window.open('', '_blank');
+        if (win && win.document) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+          win.print();
+        } else {
+          await Print.printAsync({ html });
+        }
+      } else {
+        await Print.printAsync({ html });
+      }
+    } catch (e) {
+      console.log('[Loans] export pdf error', e);
+      Alert.alert('Error', 'Failed to generate PDF');
+    }
+  }, [calcTotals, formatCurrency]);
+
+  const myLoans = useMemo(() => loans.filter((l) => l.borrowerId === userId), [loans, userId]);
+  const activeOutstanding = useMemo(() => myLoans.filter((l) => l.status === 'active').reduce((s, l) => s + calcTotals(l).outstanding, 0), [myLoans, calcTotals]);
+
+  const renderHeader = (title, onBack) => (
+    <View style={styles.screenHeader}>
+      {onBack ? (
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} testID="backBtn">
+          <ArrowLeft color="#FFA500" size={24} />
+        </TouchableOpacity>
+      ) : <View style={{ width: 32 }} />}
+      <Text style={styles.screenTitle}>{title}</Text>
+      <View style={{ width: 32 }} />
+    </View>
+  );
+
+  const Terms = () => (
+    <View style={[styles.card, { marginTop: 12 }]}> 
+      <Text style={styles.sectionTitle}>Loan Terms & Conditions</Text>
+      <Text style={styles.muted}>• Eligibility requires Trust 100% and verified identity (NIN and ID/Passport.{"\n"}
+      • Providing false information leads to denial and potential suspension.{"\n"}
+      • Disbursement is sent to your linked Mobile Money or Bank details.{"\n"}
+      • Late or missed repayments may affect eligibility and organization rules.{"\n"}
+      • By proceeding you agree to these terms.</Text>
+    </View>
+  );
+
+  const renderHome = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('Loans', () => {
+        try { router.back(); } catch (e) { console.log('[Loans] back error', e); }
+      })}
+      <ScrollView style={styles.scroll}>
+        <LinearGradient colors={["#fff2e0", "#ffd8a8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.headerCard}>
+          <View style={styles.headerLeft}>
+            <HandCoins color="#FFA500" size={28} />
+            <View>
+              <Text style={styles.headerTitle}>Loans</Text>
+              <Text style={styles.headerSubtitle}>Request, manage and repay</Text>
+            </View>
+          </View>
+        </LinearGradient>
+        <View style={styles.summaryRow}>
+          <LinearGradient colors={["#e8f7ee", "#c9f0d5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summaryCard}>
+            <ShieldCheck color="#4CAF50" size={22} />
+            <Text style={styles.summaryValue}>{trustScore}%</Text>
+            <Text style={styles.summaryLabel}>Trust</Text>
+          </LinearGradient>
+          <LinearGradient colors={["#e6f7ff", "#c7ecff"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summaryCard}>
+            <CreditCard color="#5CCEF4" size={22} />
+            <Text style={styles.summaryValue}>{formatCurrency(activeOutstanding)}</Text>
+            <Text style={styles.summaryLabel}>Outstanding</Text>
+          </LinearGradient>
+          <LinearGradient colors={["#fff2e0", "#ffd8a8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summaryCard}>
+            <Calendar color="#666" size={22} />
+            <Text style={styles.summaryValue}>{myLoans.length}</Text>
+            <Text style={styles.summaryLabel}>My Loans</Text>
+          </LinearGradient>
+        </View>
+        <View style={styles.actionsRow}>
+          <LinearGradient colors={["#ff9f43", "#ff6b00"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => setView('request')} testID="requestLoanBtn">
+              <Text style={styles.primaryBtnText}>Request Loan</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setView('my')} testID="myLoansBtn">
+            <Text style={styles.secondaryBtnText}>My Loans</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setView('accounts')} testID="accountsBtn">
+            <Text style={styles.secondaryBtnText}>Create Loan Account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setView('loanGroups')} testID="loanGroupsBtn">
+            <Text style={styles.secondaryBtnText}>Loan Groups</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setView('ledger')} testID="ledgerBtn">
+            <Text style={styles.secondaryBtnText}>Ledger</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.limitCard}>
+          <Percent color="#FFA500" size={18} />
+          <Text style={styles.limitText}>Your current limit: {formatCurrency(maxLoan)}</Text>
+        </View>
+        <Terms />
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  const renderRequest = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('Request Loan', () => setView('home'))}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex1}>
+        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.infoCard}>
+            <Text style={styles.infoText}>Limit: {formatCurrency(maxLoan)} • Trust: {trustScore}%</Text>
+            <Text style={[styles.smallMuted, { marginTop: 4 }]}>You only request the amount. Interest and duration are set by the lender.</Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Your Identified Details</Text>
+            {(() => {
+              const acc = loanAccounts.find((a)=>a.ownerId===userId && a.type==='individual');
+              if (!acc) return <Text style={styles.muted}>No Individual Loan Account yet. Create one in Accounts.</Text>;
+              return (
+                <View>
+                  <View style={styles.kvRow}><Text style={styles.kvLabel}>Full name</Text><Text style={styles.kvValue}>{acc.data.fullName}</Text></View>
+                  <View style={styles.kvRow}><Text style={styles.kvLabel}>NIN</Text><Text style={styles.kvValue}>{acc.data.nin}</Text></View>
+                  <View style={styles.kvRow}><Text style={styles.kvLabel}>Address</Text><Text style={styles.kvValue}>{acc.data.address}</Text></View>
+                  <View style={styles.kvRow}><Text style={styles.kvLabel}>Phone</Text><Text style={styles.kvValue}>{acc.data.phone}</Text></View>
+                </View>
+              );
+            })()}
+            <Text style={[styles.muted, { marginTop: 8 }]}>Interest rate and duration will be set by the Lender during approval.</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Amount (NLe)</Text>
+            <View style={[styles.inputBox, requestErrors.amount && styles.inputBoxError]}>
+              <TextInput value={amount} onChangeText={(t)=>{ setAmount(t.replace(/[^0-9.]/g,'')); setRequestErrors((e)=>({ ...e, amount: false })); }} placeholder="0.00" keyboardType="numeric" style={styles.input} testID="amountInput" />
+            </View>
+            {requestErrors.amount ? <Text style={styles.errorText}>Amount is required</Text> : null}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Purpose</Text>
+            <View style={[styles.inputBox, requestErrors.purpose && styles.inputBoxError]}>
+              <TextInput value={purpose} onChangeText={(t)=>{ setPurpose(t); setRequestErrors((e)=>({ ...e, purpose: false })); }} placeholder="What do you need this loan for?" style={[styles.input, { height: 80, textAlignVertical: 'top' }]} multiline numberOfLines={3} testID="purposeInput" />
+            </View>
+            {requestErrors.purpose ? <Text style={styles.errorText}>Purpose is required</Text> : null}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Guarantor</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Guarantor NIN</Text>
+              <View style={[styles.inputBox, requestErrors.guarantorNin && styles.inputBoxError]}>
+                <TextInput value={guarantorNin} onChangeText={(t)=>{ setGuarantorNin(t); setRequestErrors((e)=>({ ...e, guarantorNin: false })); }} placeholder="Enter guarantor NIN" style={styles.input} testID="guarantorNin" />
+              </View>
+              {requestErrors.guarantorNin ? <Text style={styles.errorText}>Guarantor NIN is required</Text> : null}
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Attach ID Card Photos</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <UploadTile
+                  label="Upload Front of ID Card"
+                  imageUri={guarantorIdFrontB64}
+                  onPress={() => pickGuarantorImage('front')}
+                  error={requestErrors.guarantorFront}
+                  testID="pickGuarantorFront"
+                />
+                <UploadTile
+                  label="Upload Back of ID Card"
+                  imageUri={guarantorIdBackB64}
+                  onPress={() => pickGuarantorImage('back')}
+                  error={requestErrors.guarantorBack}
+                  testID="pickGuarantorBack"
+                />
+              </View>
+              {(requestErrors.guarantorFront || requestErrors.guarantorBack) ? <Text style={styles.errorText}>Guarantor ID front and back are required</Text> : null}
+            </View>
+          </View>
+
+          <Terms />
+
+          <TouchableOpacity style={styles.checkboxRow} onPress={() => { setAgreedTerms(!agreedTerms); setRequestErrors((e)=>({ ...e, agree: false })); }} testID="agreeTerms">
+            <View style={[styles.checkboxBox, agreedTerms && { backgroundColor: '#FFA500', borderColor: '#FFA500' }, requestErrors.agree && styles.checkboxError]}>
+              {agreedTerms ? <Check color="#fff" size={16} /> : null}
+            </View>
+            <Text style={styles.checkboxLabel}>I have read and agree to the Terms & Conditions</Text>
+          </TouchableOpacity>
+          {requestErrors.agree ? <Text style={[styles.errorText, { marginHorizontal: 16, marginTop: -6 }]}>You must agree to continue</Text> : null}
+
+          <LinearGradient colors={["#ff9f43", "#ff6b00"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.primaryGradient, { marginHorizontal: 16 }]}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={requestLoan} disabled={!agreedTerms} testID="submitLoanRequest">
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Submit Request</Text>}
+          </TouchableOpacity>
+        </LinearGradient>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+
+  const renderLoanCard = ({ item: loan }) => {
+    const totals = calcTotals(loan);
+    return (
+      <TouchableOpacity style={styles.card} onPress={() => { setSelectedLoan(loan); setView('loanDetails'); }} testID={`loanCard-${loan.id}`}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <HandCoins color="#FFA500" size={20} />
+            <Text style={styles.cardTitle}>Loan #{loan.id.slice(-6)}</Text>
+          </View>
+          <View style={[styles.badge, loan.status === 'active' ? styles.badgeBlue : loan.status === 'pending' ? styles.badgeOrange : loan.status === 'completed' ? styles.badgeGreen : styles.badgeGray]}>
+            <Text style={styles.badgeText}>{loan.status}</Text>
+          </View>
+        </View>
+        <View style={styles.cardRow}><CreditCard color="#666" size={16} /><Text style={styles.cardText}>{formatCurrency(loan.amount)} • {loan.interest != null ? `${loan.interest}%` : 'interest —'} • {loan.term != null ? `${loan.term} mo` : 'term —'}</Text></View>
+        <View style={styles.cardRow}><Clock color="#666" size={16} /><Text style={styles.cardText}>Outstanding: {formatCurrency(totals.outstanding)}</Text></View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderMyLoans = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('My Loans', () => setView('home'))}
+      <ScrollView style={styles.scroll}>
+        {myLoans.length === 0 ? (
+          <View style={styles.emptyState}>
+            <HandCoins color="#ccc" size={48} />
+            <Text style={styles.emptyText}>No loans yet</Text>
+          </View>
+        ) : (
+          <FlatList data={myLoans} renderItem={renderLoanCard} keyExtractor={(i)=>i.id} scrollEnabled={false} />
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  const renderLoanDetails = () => {
+    if (!selectedLoan) return null;
+    const totals = calcTotals(selectedLoan);
+    const org = orgs.find((o) => o.id === selectedLoan.orgId);
+    return (
+      <SafeAreaView style={styles.container}>
+        {renderHeader('Loan Details', () => setView('my'))}
+        <ScrollView style={styles.scroll}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <HandCoins color="#FFA500" size={20} />
+                <Text style={styles.cardTitle}>Loan #{selectedLoan.id.slice(-6)}</Text>
+              </View>
+              <View style={[styles.badge, selectedLoan.status === 'active' ? styles.badgeBlue : selectedLoan.status === 'pending' ? styles.badgeOrange : selectedLoan.status === 'completed' ? styles.badgeGreen : styles.badgeGray]}>
+                <Text style={styles.badgeText}>{selectedLoan.status}</Text>
+              </View>
+            </View>
+            <View style={styles.cardRow}><Percent color="#666" size={16} /><Text style={styles.cardText}>{formatCurrency(selectedLoan.amount)} • {selectedLoan.interest != null ? `${selectedLoan.interest}%` : 'interest —'} • {selectedLoan.term != null ? `${selectedLoan.term} months` : 'term —'}</Text></View>
+            <View style={styles.cardRow}><Building2 color="#666" size={16} /><Text style={styles.cardText}>Organization: {org ? org.name : '—'}</Text></View>
+            <View style={styles.cardRow}><Calendar color="#666" size={16} /><Text style={styles.cardText}>Created: {new Date(selectedLoan.createdAt).toLocaleDateString()}</Text></View>
+            <View style={[styles.kvRow]}>
+              <Text style={styles.kvLabel}>Total Repayable</Text><Text style={styles.kvValue}>{formatCurrency(totals.total)}</Text>
+            </View>
+            <View style={[styles.kvRow]}>
+              <Text style={styles.kvLabel}>Repaid</Text><Text style={styles.kvValue}>{formatCurrency(totals.paid)}</Text>
+            </View>
+            <View style={[styles.kvRow]}>
+              <Text style={styles.kvLabel}>Outstanding</Text><Text style={[styles.kvValue, { color: '#e67e22' }]}>{formatCurrency(totals.outstanding)}</Text>
+            </View>
+            {selectedLoan.status === 'active' ? (
+              <LinearGradient colors={["#22c55e", "#16a34a"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.primaryGradient, { marginTop: 8 }]}>
+                <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowRepayModal(true)} testID="repayBtn">
+                  <Text style={styles.primaryBtnText}>Repay</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+            ) : null}
+            <TouchableOpacity style={[styles.secondaryBtn, { marginTop: 8 }]} onPress={() => exportPaymentsPdf(selectedLoan)} testID="exportPdfBtn">
+              <Download color="#FFA500" size={18} />
+              <Text style={styles.secondaryBtnText}>Export PDF</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.sectionTitle}>Payments</Text>
+            {(selectedLoan.repayments || []).length === 0 ? (
+              <Text style={styles.muted}>No payments yet</Text>
+            ) : (
+              (selectedLoan.repayments || []).map((p) => (
+                <View key={p.id} style={styles.listRowBetween}>
+                  <View style={styles.rowLeft}>
+                    <CreditCard color="#FFA500" size={18} />
+                    <View>
+                      <Text style={styles.listText}>{p.method === 'mm' ? 'Mobile Money' : 'Bank'} • {new Date(p.date).toLocaleString()}</Text>
+                      <Text style={styles.smallMuted}>{p.number || ''}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.bold}>{formatCurrency(p.amount)}</Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <Terms />
+        </ScrollView>
+
+        <Modal visible={showRepayModal} transparent animationType="fade" onRequestClose={() => setShowRepayModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Repay Loan</Text>
+                <TouchableOpacity onPress={() => setShowRepayModal(false)}>
+                  <X color="#666" size={22} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.muted}>Outstanding: {formatCurrency(totals.outstanding)}</Text>
+              <View style={[styles.inputGroup, { marginTop: 10 }]}>
+                <Text style={styles.inputLabel}>Amount (NLe)</Text>
+                <View style={styles.inputBox}>
+                  <TextInput value={repayAmount} onChangeText={(t)=>setRepayAmount(t.replace(/[^0-9.]/g,''))} placeholder="0.00" keyboardType="numeric" style={styles.input} testID="repayAmount" />
+                </View>
+              </View>
+              <Text style={[styles.inputLabel, { marginTop: 6 }]}>Method</Text>
+              {mobileMoney ? (
+                <TouchableOpacity style={[styles.selector, repayMethod === 'mm' && { backgroundColor: '#fff5e6', borderColor: '#FFA500' }]} onPress={() => { setRepayMethod('mm'); setSelectedBankId(''); }} testID="repayMethodMM">
+                  <Text style={styles.selectorText}>Mobile Money • {mobileMoney.provider} ({(mobileMoney.number || '').slice(0,4)}****{(mobileMoney.number || '').slice(-2)})</Text>
+                  {repayMethod === 'mm' ? <Check color="#FFA500" size={18} /> : <Text style={styles.selectorArrow}>▼</Text>}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.infoCard}><Text style={styles.muted}>No Mobile Money set. Add in Profile.</Text></View>
+              )}
+              <Text style={[styles.inputLabel, { marginTop: 6 }]}>Banks</Text>
+              {linkedBanks.length === 0 ? (
+                <View style={styles.infoCard}><Text style={styles.muted}>No banks linked. Add in Profile.</Text></View>
+              ) : (
+                linkedBanks.map((b) => (
+                  <TouchableOpacity key={b.id} style={[styles.selector, repayMethod === 'bank' && selectedBankId === b.id && { backgroundColor: '#fff5e6', borderColor: '#FFA500' }]} onPress={() => { setRepayMethod('bank'); setSelectedBankId(b.id); }} testID={`repayBank-${b.id}`}>
+                    <Text style={styles.selectorText}>{b.bank} • {('*'.repeat(Math.max(0, (b.number || '').length - 4)))}{String(b.number || '').slice(-4)}</Text>
+                    {repayMethod === 'bank' && selectedBankId === b.id ? <Check color="#FFA500" size={18} /> : <Text style={styles.selectorArrow}>▼</Text>}
+                  </TouchableOpacity>
+                ))
+              )}
+              <LinearGradient colors={["#22c55e", "#16a34a"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.primaryGradient, { marginTop: 10 }]}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={repayLoan} disabled={loading} testID="confirmRepay">
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Confirm</Text>}
+            </TouchableOpacity>
+          </LinearGradient>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    );
+  };
+
+  const [approveParams, setApproveParams] = useState({});
+  const myAdminOrgs = useMemo(() => orgs.filter((o) => o.ownerId === userId), [orgs, userId]);
+  const memberOrgs = useMemo(() => orgs.filter((o) => (o.members || []).includes(userId)), [orgs, userId]);
+
+  const createOrg = useCallback(async () => {
+    if (!orgName.trim()) { Alert.alert('Required', 'Enter organization name'); return; }
+    try {
+      setLoading(true);
+      const membersFromGroup = (() => {
+        const g = groups.find((gg) => gg.id === orgGroupId);
+        if (!g) return [];
+        return (g.membersList || []).map((m) => m.phone || m.id).filter(Boolean);
+      })();
+      const org = { id: Date.now().toString(), name: orgName.trim(), ownerId: userId, groupId: orgGroupId || '', bankId: orgBankId || '', members: Array.from(new Set(membersFromGroup)) };
+      const next = [...orgs, org];
+      await saveOrgs(next);
+      await addLedger('org-created', { orgId: org.id, name: org.name });
+      setOrgName(''); setOrgGroupId(''); setOrgBankId('');
+      setSelectedOrg(org);
+      setView('orgDetails');
+    } catch (e) {
+      console.log('[Loans] create org error', e);
+      Alert.alert('Error', 'Failed to create organization');
+    } finally {
+      setLoading(false);
+    }
+  }, [orgName, orgGroupId, orgBankId, userId, groups, orgs, saveOrgs, addLedger]);
+
+  const syncMembersFromGroup = useCallback(async (org) => {
+    try {
+      setLoading(true);
+      const g = groups.find((gg) => gg.id === (org.groupId || ''));
+      const members = g ? (g.membersList || []).map((m) => m.phone || m.id).filter(Boolean) : (org.members || []);
+      const next = orgs.map((o) => o.id === org.id ? { ...o, members: Array.from(new Set(members)) } : o);
+      await saveOrgs(next);
+      setSelectedOrg(next.find((o) => o.id === org.id) || null);
+      Alert.alert('Synced', 'Members synced from group');
+    } catch (e) {
+      console.log('[Loans] sync members', e);
+      Alert.alert('Error', 'Failed to sync members');
+    } finally {
+      setLoading(false);
+    }
+  }, [groups, orgs, saveOrgs]);
+
+  const renderOrgs = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('Organizations', () => setView('home'))}
+      <ScrollView style={styles.scroll}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Create Organization</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Name</Text>
+            <View style={styles.inputBox}>
+              <TextInput value={orgName} onChangeText={setOrgName} placeholder="e.g., Hope Foundation" style={styles.input} testID="orgNameInput" />
+            </View>
+          </View>
+          <Text style={styles.inputLabel}>Link Group (optional)</Text>
+          {groups.length === 0 ? (
+            <View style={styles.infoCard}><Text style={styles.muted}>No groups available</Text></View>
+          ) : (
+            groups.map((g) => (
+              <TouchableOpacity key={g.id} style={[styles.selector, orgGroupId === g.id && { backgroundColor: '#fff5e6', borderColor: '#FFA500' }]} onPress={() => setOrgGroupId(orgGroupId === g.id ? '' : g.id)} testID={`pickGroup-${g.id}`}>
+                <Text style={styles.selectorText}>{g.name}</Text>
+                {orgGroupId === g.id ? <Check color="#FFA500" size={18} /> : <Text style={styles.selectorArrow}>▼</Text>}
+              </TouchableOpacity>
+            ))
+          )}
+          <Text style={styles.inputLabel}>Organization Bank (optional)</Text>
+          {linkedBanks.length === 0 ? (
+            <View style={styles.infoCard}><Text style={styles.muted}>No banks linked in Profile</Text></View>
+          ) : (
+            linkedBanks.map((b) => (
+              <TouchableOpacity key={b.id} style={[styles.selector, orgBankId === b.id && { backgroundColor: '#fff5e6', borderColor: '#FFA500' }]} onPress={() => setOrgBankId(orgBankId === b.id ? '' : b.id)} testID={`pickOrgBank-${b.id}`}>
+                <Text style={styles.selectorText}>{b.bank} • {('*'.repeat(Math.max(0, (b.number || '').length - 4)))}{String(b.number || '').slice(-4)}</Text>
+                {orgBankId === b.id ? <Check color="#FFA500" size={18} /> : <Text style={styles.selectorArrow}>▼</Text>}
+              </TouchableOpacity>
+            ))
+          )}
+          <TouchableOpacity style={[styles.primaryBtn, { marginTop: 10 }]} onPress={createOrg} disabled={loading} testID="createOrgBtn">
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create</Text>}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Organizations</Text>
+          {myAdminOrgs.length === 0 ? (
+            <View style={styles.emptyState}><Building2 color="#ccc" size={40} /><Text style={styles.emptyText}>No organizations</Text></View>
+          ) : (
+            myAdminOrgs.map((o) => (
+              <TouchableOpacity key={o.id} style={styles.card} onPress={() => { setSelectedOrg(o); setView('orgDetails'); }} testID={`orgCard-${o.id}`}>
+                <View style={styles.cardHeader}><View style={styles.cardHeaderLeft}><Building2 color="#5CCEF4" size={20} /><Text style={styles.cardTitle}>{o.name}</Text></View></View>
+                <View style={styles.cardRow}><Users color="#666" size={16} /><Text style={styles.cardText}>Members: {(o.members || []).length}</Text></View>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Organizations I Belong To</Text>
+          {memberOrgs.length === 0 ? (
+            <View style={styles.emptyState}><Users color="#ccc" size={40} /><Text style={styles.emptyText}>None</Text></View>
+          ) : (
+            memberOrgs.map((o) => (
+              <View key={o.id} style={styles.card}>
+                <View style={styles.cardHeader}><View style={styles.cardHeaderLeft}><Building2 color="#5CCEF4" size={20} /><Text style={styles.cardTitle}>{o.name}</Text></View></View>
+                <View style={styles.cardRow}><Users color="#666" size={16} /><Text style={styles.cardText}>Members: {(o.members || []).length}</Text></View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  const renderOrgDetails = () => {
+    if (!selectedOrg) return null;
+    const pendingLoans = loans.filter((l) => l.status === 'pending' && (selectedOrg.members || []).includes(l.borrowerId));
+    const approvedLoans = loans.filter((l) => l.status === 'approved' && l.orgId === selectedOrg.id);
+    const activeLoans = loans.filter((l) => l.status === 'active' && l.orgId === selectedOrg.id);
+    return (
+      <SafeAreaView style={styles.container}>
+        {renderHeader(selectedOrg.name, () => setView('orgs'))}
+        <ScrollView style={styles.scroll}>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Settings</Text>
+            <Text style={styles.muted}>Linked Group: {selectedOrg.groupId ? (groups.find((g) => g.id === selectedOrg.groupId)?.name || selectedOrg.groupId) : 'None'}</Text>
+            <Text style={styles.muted}>Bank: {selectedOrg.bankId ? (linkedBanks.find((b)=>b.id===selectedOrg.bankId)?.bank || 'Bank') : 'None'}</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => syncMembersFromGroup(selectedOrg)} testID="syncMembersBtn">
+                <Text style={styles.secondaryBtnText}>Sync Members</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.sectionTitle}>Pending Requests</Text>
+            {pendingLoans.length === 0 ? (
+              <Text style={styles.muted}>No pending requests</Text>
+            ) : (
+              pendingLoans.map((l) => (
+                <View key={l.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }}>
+                  <View style={styles.rowLeft}>
+                    <HandCoins color="#FFA500" size={18} />
+                    <View>
+                      <Text style={styles.listText}>{l.borrowerName} • {formatCurrency(l.amount)}</Text>
+                      <Text style={styles.smallMuted}>#{l.id.slice(-6)}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.row2, { marginTop: 8, paddingHorizontal: 0 }]}> 
+                    <View style={[styles.inputGroup, styles.flex1, { marginRight: 8 }]}> 
+                      <Text style={styles.inputLabel}>Interest (%)</Text>
+                      <View style={styles.inputBox}>
+                        <TextInput
+                          value={approveParams[l.id]?.interest ?? ''}
+                          onChangeText={(t)=>setApproveParams((p)=>({ ...p, [l.id]: { ...(p[l.id]||{}), interest: t.replace(/[^0-9.]/g,'') } }))}
+                          placeholder="10"
+                          keyboardType="numeric"
+                          style={styles.input}
+                          testID={`setInterest-${l.id}`}
+                        />
+                      </View>
+                    </View>
+                    <View style={[styles.inputGroup, styles.flex1, { marginLeft: 8 }]}> 
+                      <Text style={styles.inputLabel}>Term (months)</Text>
+                      <View style={styles.inputBox}>
+                        <TextInput
+                          value={approveParams[l.id]?.term ?? ''}
+                          onChangeText={(t)=>setApproveParams((p)=>({ ...p, [l.id]: { ...(p[l.id]||{}), term: t.replace(/[^0-9]/g,'') } }))}
+                          placeholder="12"
+                          keyboardType="number-pad"
+                          style={styles.input}
+                          testID={`setTerm-${l.id}`}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingHorizontal: 16 }}>
+                    <TouchableOpacity style={styles.approveBtn} onPress={() => approveLoan(selectedOrg, l, approveParams[l.id])} testID={`approve-${l.id}`}>
+                      <Check color="#fff" size={14} />
+                      <Text style={styles.approveBtnText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.rejectBtn} onPress={() => rejectLoan(selectedOrg, l)} testID={`reject-${l.id}`}>
+                      <X color="#fff" size={14} />
+                      <Text style={styles.rejectBtnText}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.sectionTitle}>Approved (Awaiting Disbursement)</Text>
+            {approvedLoans.length === 0 ? (
+              <Text style={styles.muted}>None</Text>
+            ) : (
+              approvedLoans.map((l) => (
+                <View key={l.id} style={styles.listRowBetween}>
+                  <View style={styles.rowLeft}>
+                    <HandCoins color="#FFA500" size={18} />
+                    <Text style={styles.listText}>#{l.id.slice(-6)} • {l.borrowerName} • {formatCurrency(l.amount)}</Text>
+                  </View>
+                  <LinearGradient colors={["#5CCEF4", "#3498db"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.primaryGradient}>
+                    <TouchableOpacity style={styles.primaryBtn} onPress={() => disburseLoan(selectedOrg, l)} testID={`disburse-${l.id}`}>
+                      <Text style={styles.primaryBtnText}>Disburse</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.sectionTitle}>Active Loans</Text>
+            {activeLoans.length === 0 ? (
+              <Text style={styles.muted}>None</Text>
+            ) : (
+              activeLoans.map((l) => {
+                const t = calcTotals(l);
+                return (
+                  <View key={l.id} style={styles.listRowBetween}>
+                    <View style={styles.rowLeft}>
+                      <HandCoins color="#5CCEF4" size={18} />
+                      <Text style={styles.listText}>#{l.id.slice(-6)} • {l.borrowerName}</Text>
+                    </View>
+                    <Text style={styles.smallMuted}>Outstanding: {formatCurrency(t.outstanding)}</Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  };
+
+  const renderLedger = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('Blockchain Ledger', () => setView('home'))}
+      <ScrollView style={styles.scroll}>
+        {ledger.length === 0 ? (
+          <View style={styles.emptyState}><FileText color="#ccc" size={40} /><Text style={styles.emptyText}>No transactions</Text></View>
+        ) : (
+          ledger.map((e) => (
+            <View key={e.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderLeft}>
+                  <FileText color="#5CCEF4" size={18} />
+                  <Text style={styles.cardTitle}>{e.type}</Text>
+                </View>
+              </View>
+              <Text style={styles.smallMuted}>Hash: {e.hash}</Text>
+              <Text style={styles.smallMuted}>Prev: {e.prev}</Text>
+              <Text style={styles.smallMuted}>Time: {new Date(e.ts).toLocaleString()}</Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  const renderLoanGroups = () => {
+    const mine = groups.filter((g)=> (g.membersList||[]).some((m)=> m.phone === userData.phone));
+    const list = groupTab === 'all' ? groups : mine;
+    return (
+      <SafeAreaView style={styles.container}>
+        {renderHeader('Loan Groups', () => setView('home'))}
+        <ScrollView style={styles.scroll}>
+          <View style={[styles.card, { paddingVertical: 16 }]}>
+            <View style={styles.tabRow}>
+              {[
+                { key: 'all', label: 'All Groups' },
+                { key: 'mine', label: 'My Groups' },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[styles.tabBtn, groupTab === t.key && styles.tabBtnActive]}
+                  onPress={() => setGroupTab(t.key)}
+                  testID={`groupTab-${t.key}`}
+                >
+                  <Text style={[styles.tabText, groupTab === t.key && styles.tabTextActive]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {list.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Users color="#ccc" size={40} />
+              <Text style={styles.emptyText}>No groups</Text>
+            </View>
+          ) : (
+            list.map((g) => (
+              <TouchableOpacity
+                key={g.id}
+                style={styles.card}
+                onPress={() => { console.log('[Loans] open group details', g.id); setSelectedGroup(g); setView('loanGroupDetails'); }}
+                testID={`loanGroup-${g.id}`}
+                accessibilityRole="button"
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardHeaderLeft}>
+                    <Users color="#5CCEF4" size={20} />
+                    <Text style={styles.cardTitle}>{g.name}</Text>
+                  </View>
+                  <View style={[styles.badge, styles.badgeOrange]}><Text style={styles.badgeText}>{g.frequency || '—'}</Text></View>
+                </View>
+                <View style={styles.cardRow}><Text style={styles.cardText}>Members: {(g.membersList||[]).length}</Text></View>
+                {g.nextEvent ? <View style={styles.cardRow}><Calendar color="#666" size={16} /><Text style={styles.cardText}>{g.nextEvent}</Text></View> : null}
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  };
+
+  const renderLoanGroupDetails = () => {
+    if (!selectedGroup) return null;
+    const members = selectedGroup.membersList || [];
+    return (
+      <SafeAreaView style={styles.container}>
+        {renderHeader(selectedGroup.name, () => setView('loanGroups'))}
+        <ScrollView style={styles.scroll}>
+          <View style={styles.card}>
+            <View style={styles.cardRow}><Users color="#666" size={16} /><Text style={styles.cardText}>Members: {members.length}</Text></View>
+            {selectedGroup.frequency ? (
+              <View style={styles.cardRow}><Calendar color="#666" size={16} /><Text style={styles.cardText}>{selectedGroup.frequency}</Text></View>
+            ) : null}
+            {selectedGroup.nextEvent ? (
+              <View style={styles.cardRow}><Calendar color="#666" size={16} /><Text style={styles.cardText}>{selectedGroup.nextEvent}</Text></View>
+            ) : null}
+          </View>
+
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.sectionTitle}>Members</Text>
+            {members.length === 0 ? (
+              <Text style={styles.muted}>No members listed</Text>
+            ) : (
+              members.map((m) => (
+                <View key={m.id || m.phone} style={styles.listRowBetween}>
+                  <View style={styles.rowLeft}>
+                    <Users color="#5CCEF4" size={18} />
+                    <View>
+                      <Text style={styles.listText}>{m.name || m.phone}</Text>
+                      {m.phone ? <Text style={styles.smallMuted}>{m.phone}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+
+          <LinearGradient colors={["#ff9f43", "#ff6b00"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.primaryGradient, { margin: 16 }]}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => { console.log('[Loans] apply from group', selectedGroup.id); setView('request'); }}
+              testID="applyFromGroupBtn"
+            >
+              <Text style={styles.primaryBtnText}>Apply for Loan</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  };
+
+  const renderAccounts = () => (
+    <SafeAreaView style={styles.container}>
+      {renderHeader('Create Loan Account', () => setView('home'))}
+      <ScrollView style={styles.scroll}>
+        <View style={[styles.card, { paddingVertical: 16 }]}>
+          <View style={styles.tabRow}>
+            {[
+              { key: 'individual', label: 'Individual' },
+              { key: 'mfi', label: 'Microfinance' },
+              { key: 'organization', label: 'Organisation' },
+            ].map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={[styles.tabBtn, accountType === t.key && styles.tabBtnActive]}
+                onPress={() => setAccountType(t.key)}
+                testID={`acctTab-${t.key}`}
+              >
+                <Text style={[styles.tabText, accountType === t.key && styles.tabTextActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Details</Text>
+          {trustScore < 100 ? (
+            <Text style={[styles.muted, { marginBottom: 8 }]}>Complete Trust to 100% to create a loan account.</Text>
+          ) : null}
+          {accountType === 'individual' && (
+            <>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Full name</Text><View style={[styles.inputBox, accountErrors.fullName && styles.inputBoxError]}><TextInput value={accountForm.fullName} onChangeText={(t)=>{ setAccountForm({...accountForm, fullName:t}); setAccountErrors((e)=>({ ...e, fullName: false })); }} placeholder="Full name" style={styles.input} /></View>{accountErrors.fullName ? <Text style={styles.errorText}>Full name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>NIN</Text><View style={[styles.inputBox, accountErrors.nin && styles.inputBoxError]}><TextInput value={accountForm.nin} onChangeText={(t)=>{ setAccountForm({...accountForm, nin:t}); setAccountErrors((e)=>({ ...e, nin: false })); }} placeholder="National ID Number" style={styles.input} /></View>{accountErrors.nin ? <Text style={styles.errorText}>NIN is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Address</Text><View style={[styles.inputBox, accountErrors.address && styles.inputBoxError]}><TextInput value={accountForm.address} onChangeText={(t)=>{ setAccountForm({...accountForm, address:t}); setAccountErrors((e)=>({ ...e, address: false })); }} placeholder="Address" style={styles.input} /></View>{accountErrors.address ? <Text style={styles.errorText}>Address is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Phone</Text><View style={[styles.inputBox, accountErrors.phone && styles.inputBoxError]}><TextInput value={accountForm.phone} onChangeText={(t)=>{ setAccountForm({...accountForm, phone:t}); setAccountErrors((e)=>({ ...e, phone: false })); }} placeholder="Phone" style={styles.input} keyboardType="phone-pad" /></View>{accountErrors.phone ? <Text style={styles.errorText}>Phone is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Email (optional)</Text><View style={styles.inputBox}><TextInput value={accountForm.email} onChangeText={(t)=>setAccountForm({...accountForm, email:t})} placeholder="Email" style={styles.input} keyboardType="email-address" /></View></View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>ID Card Photos</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <UploadTile
+                    label="Upload Front of ID Card"
+                    imageUri={accountForm.idFrontUrl}
+                    onPress={() => pickAccountImage('idFrontUrl')}
+                    error={accountErrors.idFrontUrl}
+                    testID="pickAcctFront"
+                  />
+                  <UploadTile
+                    label="Upload Back of ID Card"
+                    imageUri={accountForm.idBackUrl}
+                    onPress={() => pickAccountImage('idBackUrl')}
+                    error={accountErrors.idBackUrl}
+                    testID="pickAcctBack"
+                  />
+                </View>
+                {(accountErrors.idFrontUrl || accountErrors.idBackUrl) ? <Text style={styles.errorText}>Both ID photos are required</Text> : null}
+              </View>
+              <Text style={[styles.muted, { marginHorizontal: 16 }]}>By creating, you accept the loan Terms & Conditions.</Text>
+            </>
+          )}
+
+          {accountType === 'mfi' && (
+            <>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Institution Name</Text><View style={[styles.inputBox, accountErrors.institutionName && styles.inputBoxError]}><TextInput value={accountForm.institutionName} onChangeText={(t)=>{ setAccountForm({...accountForm, institutionName:t}); setAccountErrors((e)=>({ ...e, institutionName: false })); }} placeholder="Institution" style={styles.input} /></View>{accountErrors.institutionName ? <Text style={styles.errorText}>Institution name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Head Office Address</Text><View style={[styles.inputBox, accountErrors.headOfficeAddress && styles.inputBoxError]}><TextInput value={accountForm.headOfficeAddress} onChangeText={(t)=>{ setAccountForm({...accountForm, headOfficeAddress:t}); setAccountErrors((e)=>({ ...e, headOfficeAddress: false })); }} placeholder="Address" style={styles.input} /></View>{accountErrors.headOfficeAddress ? <Text style={styles.errorText}>Head office address is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>CEO Name</Text><View style={[styles.inputBox, accountErrors.ceoName && styles.inputBoxError]}><TextInput value={accountForm.ceoName} onChangeText={(t)=>{ setAccountForm({...accountForm, ceoName:t}); setAccountErrors((e)=>({ ...e, ceoName: false })); }} placeholder="CEO Name" style={styles.input} /></View>{accountErrors.ceoName ? <Text style={styles.errorText}>CEO name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>CEO NIN</Text><View style={[styles.inputBox, accountErrors.ceoNin && styles.inputBoxError]}><TextInput value={accountForm.ceoNin} onChangeText={(t)=>{ setAccountForm({...accountForm, ceoNin:t}); setAccountErrors((e)=>({ ...e, ceoNin: false })); }} placeholder="NIN" style={styles.input} /></View>{accountErrors.ceoNin ? <Text style={styles.errorText}>CEO NIN is required</Text> : null}</View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>CEO ID Card Photos</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <UploadTile
+                    label="Upload Front of ID Card"
+                    imageUri={accountForm.ceoIdFrontUrl}
+                    onPress={() => pickAccountImage('ceoIdFrontUrl')}
+                    error={accountErrors.ceoIdFrontUrl}
+                    testID="pickCeoFront"
+                  />
+                  <UploadTile
+                    label="Upload Back of ID Card"
+                    imageUri={accountForm.ceoIdBackUrl}
+                    onPress={() => pickAccountImage('ceoIdBackUrl')}
+                    error={accountErrors.ceoIdBackUrl}
+                    testID="pickCeoBack"
+                  />
+                </View>
+                {(accountErrors.ceoIdFrontUrl || accountErrors.ceoIdBackUrl) ? <Text style={styles.errorText}>CEO ID photos are required</Text> : null}
+              </View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Branch Address</Text><View style={[styles.inputBox, accountErrors.branchAddress && styles.inputBoxError]}><TextInput value={accountForm.branchAddress} onChangeText={(t)=>{ setAccountForm({...accountForm, branchAddress:t}); setAccountErrors((e)=>({ ...e, branchAddress: false })); }} placeholder="Branch Address" style={styles.input} /></View>{accountErrors.branchAddress ? <Text style={styles.errorText}>Branch address is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Branch Manager Name</Text><View style={[styles.inputBox, accountErrors.branchManagerName && styles.inputBoxError]}><TextInput value={accountForm.branchManagerName} onChangeText={(t)=>{ setAccountForm({...accountForm, branchManagerName:t}); setAccountErrors((e)=>({ ...e, branchManagerName: false })); }} placeholder="Manager Name" style={styles.input} /></View>{accountErrors.branchManagerName ? <Text style={styles.errorText}>Manager name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Branch Manager NIN</Text><View style={[styles.inputBox, accountErrors.branchManagerNin && styles.inputBoxError]}><TextInput value={accountForm.branchManagerNin} onChangeText={(t)=>{ setAccountForm({...accountForm, branchManagerNin:t}); setAccountErrors((e)=>({ ...e, branchManagerNin: false })); }} placeholder="NIN" style={styles.input} /></View>{accountErrors.branchManagerNin ? <Text style={styles.errorText}>Manager NIN is required</Text> : null}</View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Business Registration Certificates (Photos)</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <UploadTile
+                    label="Upload Certificate 1"
+                    imageUri={accountForm.certificate1Url}
+                    onPress={() => pickAccountImage('certificate1Url')}
+                    error={accountErrors.certificate1Url}
+                    testID="pickCert1"
+                  />
+                  <UploadTile
+                    label="Upload Certificate 2"
+                    imageUri={accountForm.certificate2Url}
+                    onPress={() => pickAccountImage('certificate2Url')}
+                    error={accountErrors.certificate2Url}
+                    testID="pickCert2"
+                  />
+                </View>
+                {(accountErrors.certificate1Url || accountErrors.certificate2Url) ? <Text style={styles.errorText}>Both certificates are required</Text> : null}
+              </View>
+              <Text style={[styles.muted, { marginHorizontal: 16 }]}>By creating, you accept the loan Terms & Conditions.</Text>
+            </>
+          )}
+
+          {accountType === 'organization' && (
+            <>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Organization Kind</Text><View style={[styles.inputBox, accountErrors.orgKind && styles.inputBoxError]}><TextInput value={accountForm.orgKind} onChangeText={(t)=>{ setAccountForm({...accountForm, orgKind:t}); setAccountErrors((e)=>({ ...e, orgKind: false })); }} placeholder="NGO/CBO/Social Club/Institution" style={styles.input} /></View>{accountErrors.orgKind ? <Text style={styles.errorText}>Organization kind is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Organization Name</Text><View style={[styles.inputBox, accountErrors.orgName && styles.inputBoxError]}><TextInput value={accountForm.orgName} onChangeText={(t)=>{ setAccountForm({...accountForm, orgName:t}); setAccountErrors((e)=>({ ...e, orgName: false })); }} placeholder="Name" style={styles.input} /></View>{accountErrors.orgName ? <Text style={styles.errorText}>Organization name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Office Address</Text><View style={[styles.inputBox, accountErrors.officeAddress && styles.inputBoxError]}><TextInput value={accountForm.officeAddress} onChangeText={(t)=>{ setAccountForm({...accountForm, officeAddress:t}); setAccountErrors((e)=>({ ...e, officeAddress: false })); }} placeholder="Address" style={styles.input} /></View>{accountErrors.officeAddress ? <Text style={styles.errorText}>Office address is required</Text> : null}</View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Registration Certificate (Photo)</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <UploadTile
+                    label="Upload Registration Certificate"
+                    imageUri={accountForm.orgRegistrationCertUrl}
+                    onPress={() => pickAccountImage('orgRegistrationCertUrl')}
+                    error={accountErrors.orgRegistrationCertUrl}
+                    testID="pickOrgRegCert"
+                  />
+                </View>
+                {accountErrors.orgRegistrationCertUrl ? <Text style={styles.errorText}>Registration certificate is required</Text> : null}
+              </View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Leader (CEO/President)</Text><View style={[styles.inputBox, accountErrors.leaderName && styles.inputBoxError]}><TextInput value={accountForm.leaderName} onChangeText={(t)=>{ setAccountForm({...accountForm, leaderName:t}); setAccountErrors((e)=>({ ...e, leaderName: false })); }} placeholder="Name" style={styles.input} /></View>{accountErrors.leaderName ? <Text style={styles.errorText}>Leader name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Leader NIN</Text><View style={[styles.inputBox, accountErrors.leaderNin && styles.inputBoxError]}><TextInput value={accountForm.leaderNin} onChangeText={(t)=>{ setAccountForm({...accountForm, leaderNin:t}); setAccountErrors((e)=>({ ...e, leaderNin: false })); }} placeholder="NIN" style={styles.input} /></View>{accountErrors.leaderNin ? <Text style={styles.errorText}>Leader NIN is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Creator Role</Text><View style={[styles.inputBox, accountErrors.creatorRole && styles.inputBoxError]}><TextInput value={accountForm.creatorRole} onChangeText={(t)=>{ setAccountForm({...accountForm, creatorRole:t}); setAccountErrors((e)=>({ ...e, creatorRole: false })); }} placeholder="CEO/President/Chairman/..." style={styles.input} /></View>{accountErrors.creatorRole ? <Text style={styles.errorText}>Creator role is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Creator Name</Text><View style={[styles.inputBox, accountErrors.creatorName && styles.inputBoxError]}><TextInput value={accountForm.creatorName} onChangeText={(t)=>{ setAccountForm({...accountForm, creatorName:t}); setAccountErrors((e)=>({ ...e, creatorName: false })); }} placeholder="Your name" style={styles.input} /></View>{accountErrors.creatorName ? <Text style={styles.errorText}>Creator name is required</Text> : null}</View>
+              <View style={styles.inputGroup}><Text style={styles.inputLabel}>Creator NIN</Text><View style={[styles.inputBox, accountErrors.creatorNin && styles.inputBoxError]}><TextInput value={accountForm.creatorNin} onChangeText={(t)=>{ setAccountForm({...accountForm, creatorNin:t}); setAccountErrors((e)=>({ ...e, creatorNin: false })); }} placeholder="NIN" style={styles.input} /></View>{accountErrors.creatorNin ? <Text style={styles.errorText}>Creator NIN is required</Text> : null}</View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Creator ID Card Photos</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <UploadTile
+                    label="Upload Front of ID Card"
+                    imageUri={accountForm.creatorIdFrontUrl}
+                    onPress={() => pickAccountImage('creatorIdFrontUrl')}
+                    error={accountErrors.creatorIdFrontUrl}
+                    testID="pickCreatorFront"
+                  />
+                  <UploadTile
+                    label="Upload Back of ID Card"
+                    imageUri={accountForm.creatorIdBackUrl}
+                    onPress={() => pickAccountImage('creatorIdBackUrl')}
+                    error={accountErrors.creatorIdBackUrl}
+                    testID="pickCreatorBack"
+                  />
+                </View>
+                {(accountErrors.creatorIdFrontUrl || accountErrors.creatorIdBackUrl) ? <Text style={styles.errorText}>Creator ID front and back are required</Text> : null}
+              </View>
+              <Text style={[styles.muted, { marginHorizontal: 16 }]}>By creating, you accept the loan Terms & Conditions.</Text>
+            </>
+          )}
+        </View>
+
+        <LinearGradient colors={["#ff9f43", "#ff6b00"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.primaryGradient, { margin: 16 }]}>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            disabled={loading}
+            onPress={async ()=>{
+              const requiredByType = accountType === 'individual' ? ['fullName','nin','address','phone','idFrontUrl','idBackUrl'] : accountType === 'mfi' ? ['institutionName','headOfficeAddress','ceoName','ceoNin','ceoIdFrontUrl','ceoIdBackUrl','branchAddress','branchManagerName','branchManagerNin','certificate1Url','certificate2Url'] : ['orgKind','orgName','officeAddress','orgRegistrationCertUrl','leaderName','leaderNin','creatorRole','creatorName','creatorNin','creatorIdFrontUrl','creatorIdBackUrl'];
+              const nextErrors = {};
+              requiredByType.forEach((k)=>{ if(!String(accountForm[k]||'').trim()) nextErrors[k]=true; });
+              setAccountErrors(nextErrors);
+              if (Object.keys(nextErrors).length>0) { Alert.alert('Missing information', 'Please fill all required fields'); return; }
+              try {
+                setLoading(true);
+                const id = Date.now().toString();
+                const record = { id, type: accountType, ownerId: userId, data: { ...accountForm } };
+                const next = [...loanAccounts.filter(a=>!(a.ownerId===userId && a.type===accountType)), record];
+                await saveAccounts(next);
+                await addLedger('loan-account-created', { id, type: accountType, ownerId: userId });
+                setAccountErrors({});
+                setAccountForm({
+                  fullName: '', nin: '', idFrontUrl: '', idBackUrl: '', passportUrl: '', address: '', phone: '', email: '',
+                  institutionName: '', headOfficeAddress: '', ceoName: '', ceoNin: '', ceoIdFrontUrl: '', ceoIdBackUrl: '', ceoPassportUrl: '',
+                  branchAddress: '', branchManagerName: '', branchManagerNin: '', branchManagerIdFrontUrl: '', branchManagerIdBackUrl: '', branchManagerPassportUrl: '',
+                  certificate1Url: '', certificate2Url: '',
+                  orgName: '', officeAddress: '', orgRegistrationCertUrl: '', leaderName: '', leaderNin: '', leaderIdFrontUrl: '', leaderIdBackUrl: '', leaderPassportUrl: '',
+                  creatorRole: '', creatorName: '', creatorNin: '', creatorIdFrontUrl: '', creatorIdBackUrl: '', creatorPassportUrl: '',
+                  orgKind: 'NGO',
+                });
+                setView('home');
+                Alert.alert('Created', 'Loan account saved');
+              } catch(e) {
+                console.log('[Loans] acct create error', e);
+                Alert.alert('Error', 'Failed to save account');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            testID="saveAccountBtn"
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create Account</Text>}
+          </TouchableOpacity>
+        </LinearGradient>
+
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>My Accounts</Text>
+          {loanAccounts.filter(a=>a.ownerId===userId).length===0 ? (
+            <Text style={styles.muted}>No accounts yet</Text>
+          ) : (
+            loanAccounts.filter(a=>a.ownerId===userId).map((a)=> (
+              <View key={a.id} style={styles.listRowBetween}>
+                <View style={styles.rowLeft}><HandCoins color="#FFA500" size={18} /><Text style={styles.listText}>{a.type}</Text></View>
+                <Text style={styles.smallMuted}>{new Date(parseInt(a.id,10)).toLocaleString()}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  return (
+    <>
+      {loading && view === 'home' ? null : null}
+      {view === 'home' && renderHome()}
+      {view === 'request' && renderRequest()}
+      {view === 'my' && renderMyLoans()}
+      {view === 'loanDetails' && renderLoanDetails()}
+      {view === 'orgs' && renderOrgs()}
+      {view === 'orgDetails' && renderOrgDetails()}
+      {view === 'ledger' && renderLedger()}
+      {view === 'accounts' && renderAccounts()}
+      {view === 'loanGroups' && renderLoanGroups()}
+      {view === 'loanGroupDetails' && renderLoanGroupDetails()}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  scroll: { flex: 1 },
+  flex1: { flex: 1 },
+
+  screenHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
+  backBtn: { padding: 6 },
+  screenTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+
+  headerCard: { backgroundColor: '#fff', padding: 16, margin: 16, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#333' },
+  headerSubtitle: { color: '#666', marginTop: 2 },
+
+  summaryRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16 },
+  summaryCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  summaryValue: { marginTop: 6, fontWeight: '800', color: '#333' },
+  summaryLabel: { color: '#666', fontSize: 12 },
+
+  actionsRow: { padding: 16, gap: 10 },
+  primaryGradient: { borderRadius: 12, overflow: 'hidden' },
+  primaryBtn: { backgroundColor: 'transparent', borderRadius: 12, height: 48, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
+  primaryBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  secondaryBtn: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#FFA500', borderRadius: 12, height: 48, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
+  secondaryBtnText: { color: '#FFA500', fontWeight: 'bold', fontSize: 16 },
+
+  limitCard: { marginHorizontal: 16, marginBottom: 16, backgroundColor: '#fff', borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  limitText: { color: '#333', fontWeight: '600' },
+
+  infoCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginHorizontal: 16, marginBottom: 12 },
+  infoText: { color: '#444' },
+
+  inputGroup: { marginHorizontal: 16, marginBottom: 12 },
+  inputLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 6 },
+  inputBox: { borderWidth: 1, borderColor: '#ddd', backgroundColor: '#fff', borderRadius: 10 },
+  inputBoxError: { borderColor: '#e11d48', borderWidth: 2 },
+  input: { height: 48, paddingHorizontal: 12, fontSize: 16, color: '#333' },
+
+  uploadTile: { flex: 1, height: 120, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, backgroundColor: '#fff', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed' },
+  uploadPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 6 },
+  uploadLabel: { color: '#666', fontSize: 12, textAlign: 'center' },
+  uploadOverlay: { position: 'absolute', bottom: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  uploadOverlayText: { color: '#fff', fontWeight: '700', fontSize: 10 },
+  selector: { height: 48, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, backgroundColor: '#fff', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginBottom: 8 },
+  selectorText: { color: '#333' },
+  selectorArrow: { color: '#999', fontSize: 12 },
+
+  row2: { flexDirection: 'row', paddingHorizontal: 16 },
+
+  emptyState: { alignItems: 'center', padding: 40 },
+  emptyText: { color: '#777', marginTop: 8 },
+
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginHorizontal: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { fontWeight: '800', color: '#333' },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  cardText: { color: '#444' },
+
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  badgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  badgeBlue: { backgroundColor: '#3498db' },
+  badgeOrange: { backgroundColor: '#f39c12' },
+  badgeGreen: { backgroundColor: '#2ecc71' },
+  badgeGray: { backgroundColor: '#95a5a6' },
+
+  kvRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  kvLabel: { color: '#666' },
+  kvValue: { color: '#333', fontWeight: '700' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '85%', maxWidth: 380 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  modalTitle: { fontWeight: '700', color: '#333', fontSize: 16 },
+
+  section: { marginTop: 8 },
+  sectionTitle: { marginHorizontal: 16, marginBottom: 8, fontSize: 16, fontWeight: '700', color: '#333' },
+  muted: { color: '#777' },
+
+  listRowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  listText: { color: '#333', fontWeight: '600' },
+  smallMuted: { color: '#999', fontSize: 12 },
+  bold: { color: '#333', fontWeight: '700' },
+
+  approveBtn: { backgroundColor: '#4CAF50', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  approveBtnText: { color: '#fff', fontWeight: '700' },
+  rejectBtn: { backgroundColor: '#e74c3c', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rejectBtnText: { color: '#fff', fontWeight: '700' },
+
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 12 },
+  checkboxBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#ddd', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  checkboxLabel: { color: '#333', flex: 1 },
+  checkboxError: { borderColor: '#e11d48' },
+  errorText: { color: '#e11d48', fontSize: 12, marginTop: 4, marginHorizontal: 16 },
+
+  tabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  tabBtn: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 },
+  tabBtnActive: { backgroundColor: '#fff5e6' },
+  tabText: { color: '#333', fontWeight: '600' },
+  tabTextActive: { color: '#000', fontWeight: '800' },
+
+  groupItem: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  groupIconWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#f3f0ee', alignItems: 'center', justifyContent: 'center' },
+
+  applyBtnDisabled: { marginHorizontal: 16, marginBottom: 12, height: 48, borderRadius: 24, backgroundColor: '#f3efe9', alignItems: 'center', justifyContent: 'center' },
+  applyBtnText: { color: '#777', fontWeight: '700' },
+});
